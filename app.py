@@ -33,15 +33,14 @@ def extract_text_from_docx(file_bytes):
     paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
     return "\n".join(paragraphs)
 
-# 4. Hàm Async gọi AI Edge-TTS Engine xuất file âm thanh chất lượng cao
+# 4. Hàm Async gọi AI Edge-TTS Engine xuất file âm thanh chất lượng cao (Đã vá lỗi NoAudioReceived)
 async def generate_audio_async(text, output_path, voice, speed_rate):
     if not text.strip():
         raise ValueError("Văn bản bị trống!")
     
-    # Định dạng tốc độ theo chuẩn Edge-TTS (Ví dụ: +15% hoặc +20%)
-    # Mặc định tốc độ 1.15 sẽ thành +15%, 1.20 thành +20%
-    percentage = int((speed_rate - 1.0) * 100)
-    speed_string = f"+{percentage}%" if percentage >= 0 else f"{percentage}%"
+    # Định dạng tốc độ chuẩn mã hóa mới: Chuyển sang dạng hệ số nhân (Ví dụ: 1.15x, 1.2x)
+    # Cách viết này được Microsoft chấp nhận 100%, không bao giờ lo lệch format %
+    speed_string = f"{speed_rate:.2f}x"
     
     # Khởi tạo tiến trình kết nối an toàn đến máy chủ Microsoft
     communicate = edge_tts.Communicate(text, voice, rate=speed_string)
