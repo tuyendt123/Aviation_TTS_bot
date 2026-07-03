@@ -5,7 +5,7 @@ import re
 import os
 import asyncio
 from docx import Document
-import edge_tts
+import gTTS
 
 # Cấu hình giao diện Web
 st.set_page_config(page_title="Aviation TTS Bot", page_icon="✈️", layout="centered")
