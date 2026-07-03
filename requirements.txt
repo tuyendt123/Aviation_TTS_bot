@@ -1,4 +1,6 @@
 streamlit
 python-docx
 gTTS
-pydub
+audiotsm
+scipy
+numpy
