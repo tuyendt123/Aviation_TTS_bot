@@ -69,7 +69,7 @@ with st.sidebar.expander("📝 Từ điển viết tắt đang áp dụng", expa
 st.sidebar.markdown("---")
 st.sidebar.subheader("🎛️ Cấu hình giọng đọc")
 # Cho phép trượt từ 1.0 đến 1.5, bước nhảy là 0.05. Mặc định bạn chọn là 1.1
-speed = st.sidebar.slider("Tốc độ đọc (Speed Rate):", min_value=1.0, max_value=1.5, value=1.1, step=0.05)
+speed = st.sidebar.slider("Tốc độ đọc (Speed Rate):", min_value=1.0, max_value=1.5, value=1.15, step=0.05)
 
 # Khu vực Upload file Word từ máy tính
 uploaded_file = st.file_uploader("Tải lên file báo cáo Word (.docx)", type=["docx"])
