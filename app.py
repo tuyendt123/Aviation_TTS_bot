@@ -1,11 +1,11 @@
-from gtts import gTTS
 import streamlit as st
 import json
 import re
 import os
-import asyncio
+import time
 from docx import Document
-import gtts
+from gtts import gTTS
+from pydub import AudioSegment  # THÊM THƯ VIỆN NÀY ĐỂ TĂNG TỐC FILE THẬT
 
 # Cấu hình giao diện Web
 st.set_page_config(page_title="Aviation TTS Bot", page_icon="✈️", layout="centered")
@@ -21,10 +21,8 @@ def load_dictionary(file_path="aviation_dict.json"):
 def normalize_text(text, dictionary):
     if not text:
         return ""
-    # Sắp xếp từ khóa dài trước, ngắn sau để tránh lỗi đè từ
     sorted_keywords = sorted(dictionary.keys(), key=len, reverse=True)
     for kw in sorted_keywords:
-        # Dùng Regex với biên từ \b để thay thế chính xác cụm từ độc lập
         pattern = re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
         text = pattern.sub(dictionary[kw], text)
     return text
@@ -35,27 +33,39 @@ def extract_text_from_docx(file_bytes):
     paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
     return "\n".join(paragraphs)
 
-# 4. Hàm gọi AI Engine để chuyển text thành file âm thanh MP3
-def generate_audio_sync(text, output_path):
+# 4. Hàm xử lý tăng tốc độ file âm thanh thực tế bằng Pydub
+def generate_audio_with_speed(text, output_path, speed_rate=1.0):
     if not text.strip():
         raise ValueError("Văn bản bị trống!")
     
-    # Sử dụng Google TTS, ngôn ngữ tiếng Việt ('vi')
+    # Tạo file gốc 1.0 từ Google
+    temp_raw_path = "temp_raw_voice.mp3"
     tts = gTTS(text=text, lang='vi', slow=False)
-    tts.save(output_path)
+    tts.save(temp_raw_path)
+    
+    # Đọc file gốc vào bộ xử lý âm thanh
+    audio = AudioSegment.from_file(temp_raw_path, format="mp3")
+    
+    # Nếu người dùng chỉnh tốc độ khác 1.0, tiến hành ép tăng tốc trực tiếp vào file
+    if speed_rate != 1.0:
+        audio = audio.speedup(playback_speed=speed_rate)
+        
+    # Xuất thành file MP3 mới đã được tăng tốc thực sự
+    audio.export(output_path, format="mp3")
+    
+    # Xóa file nháp 1.0 đi
+    if os.path.exists(temp_raw_path):
+        os.remove(temp_raw_path)
 
 # --- GIAO DIỆN KHÔNG GIAN LÀM VIỆC ---
 st.title("✈️ Aviation Report-to-Voice Converter")
 st.write("Hệ thống tự động chuyển đổi báo cáo Word chuyên ngành thành file âm thanh MP3.")
 
-# Chọn giọng đọc ở thanh bên cạnh (Sidebar)
+# Cấu hình Giọng đọc và Tốc độ ở thanh bên cạnh (Sidebar)
 st.sidebar.header("Cấu hình Giọng đọc AI")
-voice_option = st.sidebar.selectbox(
-    "Chọn giọng đọc:",
-    options=["vi-VN-HoaiAnNeural (Nữ miền Nam)", "vi-VN-NamMinhNeural (Nam miền Bắc)"],
-    index=0
-)
-selected_voice = voice_option.split(" ")[0]
+
+# Thanh trượt chỉnh tốc độ thật cho file tải về (Mặc định để sẵn 1.5 theo ý bạn)
+speed = st.sidebar.slider("Tốc độ đọc (Speed Rate):", min_value=1.0, max_value=1.8, value=1.5, step=0.05)
 
 # Khởi tạo từ điển
 aviation_dict = load_dictionary()
@@ -67,35 +77,29 @@ uploaded_file = st.file_uploader("Tải lên file báo cáo Word (.docx)", type=
 
 if uploaded_file is not None:
     st.success("Đã tải file lên thành công. Đang xử lý cấu trúc...")
-    
-    # Đọc text gốc từ file Word
     raw_text = extract_text_from_docx(uploaded_file)
-    
-    # Tiến hành dịch các thuật ngữ viết tắt theo từ điển
     clean_text = normalize_text(raw_text, aviation_dict)
     
-    # Hiển thị khu vực xem trước kết quả dịch chữ trước khi đọc
     st.subheader("Xem trước văn bản xử lý")
     st.text_area("Văn bản AI sẽ đọc thực tế (Đã bung từ viết tắt):", value=clean_text, height=200)
         
-    # Nút bấm kích hoạt chuyển đổi
     if st.button("🚀 Xuất file MP3", type="primary"):
-        output_filename = f"converted_{uploaded_file.name.split('.')[0]}.mp3"
+        # Thêm timestamp chống dính cache bộ nhớ trình duyệt
+        timestamp = time.strftime("%H%M%S")
+        output_filename = f"converted_{uploaded_file.name.split('.')[0]}_{timestamp}.mp3"
         
-        with st.spinner("🤖 Bot đang xử lý giọng đọc... Vui lòng đợi."):
-            # Chạy tác vụ Async tạo file âm thanh
-            generate_audio_sync(clean_text, output_filename)
+        with st.spinner(f"🤖 Bot đang ghi âm với tốc độ x{speed}... Vui lòng đợi."):
+            # Gọi hàm xử lý tốc độ mới
+            generate_audio_with_speed(clean_text, output_filename, speed_rate=speed)
             
         if os.path.exists(output_filename):
             st.balloons()
             st.success("🎉 Đã tạo xong file âm thanh!")
             
-            # Trình phát nhạc nghe thử trực tiếp trên Web
             with open(output_filename, "rb") as audio_file:
                 audio_bytes = audio_file.read()
                 st.audio(audio_bytes, format="audio/mp3")
                 
-                # Nút tải file MP3 về máy tính của bạn
                 st.download_button(
                     label="📥 Tải file MP3 về máy",
                     data=audio_bytes,
@@ -103,5 +107,4 @@ if uploaded_file is not None:
                     mime="audio/mp3"
                 )
             
-            # Dọn dẹp file tạm trên máy sau khi xử lý xong
             os.remove(output_filename)
