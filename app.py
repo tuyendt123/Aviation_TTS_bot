@@ -27,7 +27,7 @@ def save_dictionary(dictionary, file_path=DICT_FILE):
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(dictionary, f, ensure_ascii=False, indent=2)
 
-# Bảng tra cứu phiên âm CHỈ DÀNH CHO CHỮ CÁI tiếng Anh
+# Bảng tra cứu phiên âm CHỈ DÀNH CHO CHỮ CÁI tiếng Anh (Đã loại bỏ chữ số)
 ENGLISH_LETTERS_PHONETICS = {
     'A': ' ây ', 'B': ' bi ', 'C': ' xi ', 'D': ' di ', 'E': ' i ', 
     'F': ' ép ', 'G': ' ji ', 'H': ' ét chơ ', 'I': ' ai ', 'J': ' jê ', 
@@ -36,7 +36,7 @@ ENGLISH_LETTERS_PHONETICS = {
     'U': ' u ', 'V': ' vi ', 'W': ' dáp liu ', 'X': ' ích ', 'Y': ' guai ', 'Z': ' jét '
 }
 
-# 3. Hàm chuẩn hóa văn bản (Sửa lỗi đọc nửa tiếng Việt ở các cụm như 5L)
+# 3. Hàm chuẩn hóa văn bản (Chữ đọc tiếng Anh, Số đọc tiếng Việt)
 def normalize_text(text, dictionary):
     if not text:
         return ""
@@ -47,17 +47,24 @@ def normalize_text(text, dictionary):
         pattern = re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
         text = pattern.sub(dictionary[kw], text)
     
-    # Bước b: Thay thế trực tiếp tất cả các chữ cái viết hoa (A-Z) đứng độc lập hoặc dính với số 
-    # thành phiên âm tiếng Anh, giữ nguyên chữ số để gTTS đọc tiếng Việt.
-    # Hàm này đảm bảo quét qua từng ký tự một cách đồng nhất, không bị bỏ sót do khoảng trắng.
-    def replace_char(match):
-        char = match.group(0)
-        return ENGLISH_LETTERS_PHONETICS.get(char, char)
-
-    # Chỉ quét và dịch các chữ cái viết hoa từ A đến Z
-    text = re.sub(r'[A-Z]', replace_char, text)
+    # Bước b: Tự động quét các từ viết tắt hoặc cụm chứa chữ viết hoa (Ví dụ: GPM, 5L, A320)
+    words = text.split()
+    for i, word in enumerate(words):
+        # Kiểm tra xem từ đó có chứa ít nhất một chữ viết hoa hay không
+        if any(char.isupper() for char in word):
+            phonetic_word = ""
+            for char in word:
+                upper_char = char.upper()
+                # TÁCH BIỆT: Nếu là chữ cái viết hoa -> Đổi sang phiên âm tiếng Anh
+                if upper_char in ENGLISH_LETTERS_PHONETICS:
+                    phonetic_word += ENGLISH_LETTERS_PHONETICS[upper_char]
+                # TÁCH BIỆT: Nếu là số hoặc dấu câu -> Giữ nguyên để gTTS đọc tiếng Việt
+                else:
+                    phonetic_word += char
+                    
+            words[i] = phonetic_word
             
-    return text
+    return " ".join(words)
 # 4. Hàm trích xuất toàn bộ văn bản từ file Word (.docx)
 def extract_text_from_docx(file_bytes):
     doc = Document(file_bytes)
