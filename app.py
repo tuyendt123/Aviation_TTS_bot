@@ -27,16 +27,20 @@ def save_dictionary(dictionary, file_path=DICT_FILE):
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(dictionary, f, ensure_ascii=False, indent=2)
 
-# Bảng tra cứu phiên âm CHỈ DÀNH CHO CHỮ CÁI tiếng Anh (Đã loại bỏ chữ số)
-ENGLISH_LETTERS_PHONETICS = {
+# Bảng tra cứu phiên âm chữ cái & chữ số tiếng Anh sang tiếng Việt để gTTS đọc chuẩn thuần Anh
+ENGLISH_PHONETICS = {
+    # Chữ cái
     'A': ' ây ', 'B': ' bi ', 'C': ' xi ', 'D': ' di ', 'E': ' i ', 
     'F': ' ép ', 'G': ' ji ', 'H': ' ét chơ ', 'I': ' ai ', 'J': ' jê ', 
     'K': ' cây ', 'L': ' eo ', 'M': ' em ', 'N': ' en ', 'O': ' ô ', 
     'P': ' pi ', 'Q': ' qui ', 'R': ' a ', 'S': ' ét ', 'T': ' ti ', 
-    'U': ' u ', 'V': ' vi ', 'W': ' dáp liu ', 'X': ' ích ', 'Y': ' guai ', 'Z': ' jét '
+    'U': ' u ', 'V': ' vi ', 'W': ' dáp liu ', 'X': ' ích ', 'Y': ' guai ', 'Z': ' jét ',
+    # Chữ số (Áp dụng khi nằm trong cụm viết tắt tiếng Anh)
+    '0': ' zi rô ', '1': ' uân ', '2': ' tu ', '3': ' thri ', '4': ' pho ', 
+    '5': ' fai ', '6': ' sích ', '7': ' sé vần ', '8': ' eit ', '9': ' nai '
 }
 
-# 3. Hàm chuẩn hóa văn bản (Chữ đọc tiếng Anh, Số đọc tiếng Việt)
+# 3. Hàm chuẩn hóa văn bản nâng cấp (Ưu tiên từ điển -> Tự động ép cụm viết tắt sang tiếng Anh)
 def normalize_text(text, dictionary):
     if not text:
         return ""
@@ -47,20 +51,23 @@ def normalize_text(text, dictionary):
         pattern = re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
         text = pattern.sub(dictionary[kw], text)
     
-    # Bước b: Tự động quét các từ viết tắt hoặc cụm chứa chữ viết hoa (Ví dụ: GPM, 5L, A320)
+    # Bước b: Tự động tách và xử lý các từ/cụm từ viết tắt chứa chữ hoa hoặc số (Ví dụ: GPM, 5L, QRH)
     words = text.split()
     for i, word in enumerate(words):
-        # Kiểm tra xem từ đó có chứa ít nhất một chữ viết hoa hay không
-        if any(char.isupper() for char in word):
+        # Kiểm tra xem từ đó có chứa chữ viết hoa hoặc chứa số hay không
+        # Ví dụ: "GPM", "5L", "A320", "MEL"
+        has_upper = any(char.isupper() for char in word)
+        has_digit = any(char.isdigit() for char in word)
+        
+        if has_upper or (has_digit and len(word) <= 5):
+            # Tiến hành đổi từng ký tự (chữ và số) trong từ đó sang tiếng Anh theo bảng tra cứu
             phonetic_word = ""
             for char in word:
                 upper_char = char.upper()
-                # TÁCH BIỆT: Nếu là chữ cái viết hoa -> Đổi sang phiên âm tiếng Anh
-                if upper_char in ENGLISH_LETTERS_PHONETICS:
-                    phonetic_word += ENGLISH_LETTERS_PHONETICS[upper_char]
-                # TÁCH BIỆT: Nếu là số hoặc dấu câu -> Giữ nguyên để gTTS đọc tiếng Việt
+                if upper_char in ENGLISH_PHONETICS:
+                    phonetic_word += ENGLISH_PHONETICS[upper_char]
                 else:
-                    phonetic_word += char
+                    phonetic_word += char # Giữ lại các dấu câu nếu có
                     
             words[i] = phonetic_word
             
