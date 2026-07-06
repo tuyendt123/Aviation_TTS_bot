@@ -27,16 +27,41 @@ def save_dictionary(dictionary, file_path=DICT_FILE):
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(dictionary, f, ensure_ascii=False, indent=2)
 
-# 3. Hàm chuẩn hóa văn bản (Thay thế từ viết tắt bằng từ hoàn chỉnh)
+# Bảng tra cứu phiên âm chữ cái tiếng Anh sang tiếng Việt để gTTS đọc chuẩn
+ENGLISH_ALPHABET_PHONETICS = {
+    'A': ' ây ', 'B': ' bi ', 'C': ' xi ', 'D': ' di ', 'E': ' i ', 
+    'F': ' ép ', 'G': ' gi ', 'H': ' ét chơ ', 'I': ' ai ', 'J': ' jê ', 
+    'K': ' cây ', 'L': ' eo ', 'M': ' em ', 'N': ' en ', 'O': ' ô ', 
+    'P': ' pi ', 'Q': ' qui ', 'R': ' a ', 'S': ' ét ', 'T': ' ti ', 
+    'U': ' u ', 'V': ' vi ', 'W': ' dáp liu ', 'X': ' ích ', 'Y': ' guai ', 'Z': ' jét '
+}
+
+# 3. Hàm chuẩn hóa văn bản nâng cấp (Dịch từ điển + Tự động ép phiên âm tiếng Anh)
 def normalize_text(text, dictionary):
     if not text:
         return ""
-    # Sắp xếp từ khóa từ dài đến ngắn để tránh lỗi đè từ
+        
+    # Bước a: Dịch các thuật ngữ viết tắt theo file từ điển JSON trước (Ưu tiên số 1)
     sorted_keywords = sorted(dictionary.keys(), key=len, reverse=True)
     for kw in sorted_keywords:
         pattern = re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
         text = pattern.sub(dictionary[kw], text)
-    return text
+    
+    # Bước b: Tự động tìm các từ viết hoa hoàn toàn từ 2-5 ký tự còn sót lại (Ví dụ: TCAS, APU, QRH)
+    # và ép chúng phát âm theo từng chữ cái tiếng Anh để gTTS đọc chuẩn, không bị đọc bồi kiểu Việt
+    words = text.split()
+    for i, word in enumerate(words):
+        # Loại bỏ các dấu câu dính vào từ nếu có (như dấu phẩy, dấu chấm)
+        clean_word = re.sub(r'[^\w]', '', word)
+        
+        # Nếu từ viết hoa hoàn toàn và có độ dài từ 2 đến 5 ký tự
+        if clean_word.isupper() and 2 <= len(clean_word) <= 5 and clean_word.isalpha():
+            # Chuyển từng chữ cái thành phiên âm tiếng Anh
+            phonetic_word = "".join([ENGLISH_ALPHABET_PHONETICS.get(char, char) for char in clean_word])
+            # Thay thế lại vào văn bản
+            words[i] = word.replace(clean_word, phonetic_word)
+            
+    return " ".join(words)
 
 # 4. Hàm trích xuất toàn bộ văn bản từ file Word (.docx)
 def extract_text_from_docx(file_bytes):
