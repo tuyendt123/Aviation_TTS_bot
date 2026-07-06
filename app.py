@@ -27,10 +27,11 @@ def save_dictionary(dictionary, file_path=DICT_FILE):
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(dictionary, f, ensure_ascii=False, indent=2)
 
-# Bảng tra cứu phiên âm chữ cái tiếng Anh sang tiếng Việt để gTTS đọc chuẩn
-ENGLISH_ALPHABET_PHONETICS = {
+# Bảng tra cứu phiên âm chữ cái & chữ số tiếng Anh sang tiếng Việt để gTTS đọc chuẩn thuần Anh
+ENGLISH_PHONETICS = {
+    # Chữ cái
     'A': ' ây ', 'B': ' bi ', 'C': ' xi ', 'D': ' di ', 'E': ' i ', 
-    'F': ' ép ', 'G': ' gi ', 'H': ' ét chơ ', 'I': ' ai ', 'J': ' jê ', 
+    'F': ' ép ', 'G': ' ji ', 'H': ' ét chơ ', 'I': ' ai ', 'J': ' jê ', 
     'K': ' cây ', 'L': ' eo ', 'M': ' em ', 'N': ' en ', 'O': ' ô ', 
     'P': ' pi ', 'Q': ' qui ', 'R': ' a ', 'S': ' ét ', 'T': ' ti ', 
     'U': ' u ', 'V': ' vi ', 'W': ' dáp liu ', 'X': ' ích ', 'Y': ' guai ', 'Z': ' jét ',
