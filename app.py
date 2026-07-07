@@ -3,14 +3,24 @@ import json
 import re
 import os
 import time
+import asyncio  # Thư viện bắt buộc để chạy luồng mã hóa của edge-tts
 from docx import Document
-from gtts import gTTS
+import edge_tts
 
 # Cấu hình giao diện Web
 st.set_page_config(page_title="Aviation TTS Bot", page_icon="✈️", layout="centered")
 
 # Đường dẫn file lưu từ điển trên server
 DICT_FILE = "aviation_dict.json"
+
+# Bảng tra cứu phiên âm CHỈ DÀNH CHO CHỮ CÁI tiếng Anh (Số giữ nguyên để đọc tiếng Việt)
+ENGLISH_LETTERS_PHONETICS = {
+    'A': ' ây ', 'B': ' bi ', 'C': ' xi ', 'D': ' di ', 'E': ' i ', 
+    'F': ' ép ', 'G': ' ji ', 'H': ' ét chơ ', 'I': ' ai ', 'J': ' jê ', 
+    'K': ' cây ', 'L': ' eo ', 'M': ' em ', 'N': ' en ', 'O': ' ô ', 
+    'P': ' pi ', 'Q': ' qui ', 'R': ' a ', 'S': ' ét ', 'T': ' ti ', 
+    'U': ' u ', 'V': ' vi ', 'W': ' dáp liu ', 'X': ' ích ', 'Y': ' guai ', 'Z': ' jét '
+}
 
 # 1. Hàm đọc file từ điển JSON
 def load_dictionary(file_path=DICT_FILE):
@@ -22,58 +32,48 @@ def load_dictionary(file_path=DICT_FILE):
             return {}
     return {}
 
-# 2. Hàm lưu từ điển mới (Khi người dùng bấm thêm từ trên giao diện Web)
+# 2. Hàm lưu từ điển mới (Khi thêm từ trực tiếp trên Web)
 def save_dictionary(dictionary, file_path=DICT_FILE):
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(dictionary, f, ensure_ascii=False, indent=2)
 
-# Bảng tra cứu phiên âm chữ cái tiếng Anh sang tiếng Việt để gTTS đọc chuẩn
-ENGLISH_ALPHABET_PHONETICS = {
-    'A': ' ây ', 'B': ' bi ', 'C': ' xi ', 'D': ' di ', 'E': ' i ', 
-    'F': ' ép ', 'G': ' gi ', 'H': ' ét chơ ', 'I': ' ai ', 'J': ' jê ', 
-    'K': ' cây ', 'L': ' eo ', 'M': ' em ', 'N': ' en ', 'O': ' ô ', 
-    'P': ' pi ', 'Q': ' qui ', 'R': ' a ', 'S': ' ét ', 'T': ' ti ', 
-    'U': ' u ', 'V': ' vi ', 'W': ' dáp liu ', 'X': ' ích ', 'Y': ' guai ', 'Z': ' jét '
-}
-
-# 3. Hàm chuẩn hóa văn bản nâng cấp (Dịch từ điển + Tự động ép phiên âm tiếng Anh)
+# 3. Hàm chuẩn hóa văn bản (Chữ đọc tiếng Anh, Số đọc tiếng Việt)
 def normalize_text(text, dictionary):
     if not text:
         return ""
         
-    # Bước a: Dịch các thuật ngữ viết tắt theo file từ điển JSON trước (Ưu tiên số 1)
+    # Quy trình 1: Dịch các thuật ngữ viết tắt theo file từ điển JSON trước (Ưu tiên số 1)
     sorted_keywords = sorted(dictionary.keys(), key=len, reverse=True)
     for kw in sorted_keywords:
         pattern = re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
         text = pattern.sub(dictionary[kw], text)
     
-    # Bước b: Tự động tìm các từ viết hoa hoàn toàn từ 2-5 ký tự còn sót lại (Ví dụ: TCAS, APU, QRH)
-    # và ép chúng phát âm theo từng chữ cái tiếng Anh để gTTS đọc chuẩn, không bị đọc bồi kiểu Việt
-    words = text.split()
-    for i, word in enumerate(words):
-        # Loại bỏ các dấu câu dính vào từ nếu có (như dấu phẩy, dấu chấm)
-        clean_word = re.sub(r'[^\w]', '', word)
-        
-        # Nếu từ viết hoa hoàn toàn và có độ dài từ 2 đến 5 ký tự
-        if clean_word.isupper() and 2 <= len(clean_word) <= 5 and clean_word.isalpha():
-            # Chuyển từng chữ cái thành phiên âm tiếng Anh
-            phonetic_word = "".join([ENGLISH_ALPHABET_PHONETICS.get(char, char) for char in clean_word])
-            # Thay thế lại vào văn bản
-            words[i] = word.replace(clean_word, phonetic_word)
-            
-    return " ".join(words)
+    # Quy trình 2: Quét toàn bộ và ép các chữ cái đơn lẻ (như GPM, L, R) đọc chuẩn tiếng Anh
+    def replace_char(match):
+        char = match.group(0)
+        return ENGLISH_LETTERS_PHONETICS.get(char, char)
+
+    text = re.sub(r'[A-Z]', replace_char, text)
+    return text
+
 # 4. Hàm trích xuất toàn bộ văn bản từ file Word (.docx)
 def extract_text_from_docx(file_bytes):
     doc = Document(file_bytes)
     paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
     return "\n".join(paragraphs)
 
-# 5. Hàm gọi Engine gTTS chuyển text thành file âm thanh MP3
-def generate_audio_sync(text, output_path):
+# 5. CẤU TRÚC HÀM ASYNC CHUẨN ĐỂ GỌI ENGINE EDGE-TTS (Đã sửa lỗi NoAudioReceived)
+async def generate_audio_async(text, output_path, voice, speed_rate):
     if not text.strip():
         raise ValueError("Văn bản bị trống!")
-    tts = gTTS(text=text, lang='vi', slow=False)
-    tts.save(output_path)
+    
+    # Định dạng hệ số tốc độ theo chuẩn Microsoft (Ví dụ: 1.15x, 1.20x)
+    speed_string = f"{speed_rate:.2f}x"
+    
+    # Khởi tạo luồng giao tiếp bảo mật với máy chủ Microsoft Edge AI
+    communicate = edge_tts.Communicate(text, voice, rate=speed_string)
+    await communicate.save(output_path)
+
 
 # --- KHỞI TẠO BỘ NHỚ TẠM CHO TỪ ĐIỂN ---
 if 'aviation_dict' not in st.session_state:
@@ -81,61 +81,65 @@ if 'aviation_dict' not in st.session_state:
 
 # --- GIAO DIỆN THANH BÊN (SIDEBAR) ---
 st.sidebar.header("Cấu hình Giọng đọc AI")
-st.sidebar.info("Hệ thống đang sử dụng công cụ gTTS (Google Text-to-Speech) mặc định.")
+
+# Lựa chọn giọng đọc AI Neural cao cấp chuẩn vùng miền của Microsoft
+voice_option = st.sidebar.selectbox(
+    "Chọn giọng đọc:",
+    options=["vi-VN-HoaiAnNeural (Nữ miền Nam)", "vi-VN-NamMinhNeural (Nam miền Bắc)"],
+    index=0
+)
+selected_voice = voice_option.split(" ")[0]
+
+# Thanh trượt cấu hình tốc độ (Mặc định để sẵn mốc 1.15 theo yêu cầu của bạn)
+speed = st.sidebar.slider("Tốc độ đọc (Speed Rate):", min_value=1.0, max_value=1.5, value=1.15, step=0.05)
 
 st.sidebar.markdown("---")
 
-# ✨ KHU VỰC BỔ SUNG TỪ VIẾT TẮT TRỰC TIẾP TRÊN WEB
+# Khu vực bổ sung từ viết tắt nhanh trực tiếp trên giao diện Web
 st.sidebar.subheader("➕ Thêm từ viết tắt nhanh")
 new_key = st.sidebar.text_input("Từ viết tắt (Ví dụ: MEL):").strip()
 new_value = st.sidebar.text_input("Cách đọc hoàn chỉnh (Ví dụ: Minimum Equipment List):").strip()
 
 if st.sidebar.button("Thêm vào từ điển", use_container_width=True):
     if new_key and new_value:
-        # Cập nhật vào bộ nhớ tạm session_state và ghi trực tiếp vào file JSON trên server
         st.session_state.aviation_dict[new_key] = new_value
         save_dictionary(st.session_state.aviation_dict)
         st.sidebar.success(f"🎉 Đã thêm thành công: {new_key}")
         time.sleep(1)
-        st.rerun()  # Làm mới trang để cập nhật từ điển ngay lập tức
+        st.rerun()
     else:
         st.sidebar.error("Vui lòng nhập đầy đủ cả 2 ô!")
 
-# Hiển thị bảng từ điển hiện tại cho người dùng theo dõi
-with st.sidebar.expander("📝 Từ điển viết tắt đang áp dụng", expanded=True):
+with st.sidebar.expander("📝 Từ điển viết tắt đang áp dụng", expanded=False):
     st.json(st.session_state.aviation_dict)
+
 
 # --- GIAO DIỆN KHÔNG GIAN LÀM VIỆC CHÍNH ---
 st.title("✈️ Aviation Report-to-Voice Converter")
-st.write("Hệ thống tự động chuyển đổi báo cáo Word chuyên ngành thành file âm thanh MP3.")
+st.write("Hệ thống tự động chuyển đổi báo cáo Word chuyên ngành thành file âm thanh MP3 AI Neural.")
 
-# Khu vực Upload file Word từ máy tính
 uploaded_file = st.file_uploader("Tải lên file báo cáo Word (.docx)", type=["docx"])
 
 if uploaded_file is not None:
     st.success("Đã tải file lên thành công. Đang xử lý cấu trúc...")
     
-    # Đọc text gốc từ file Word
     raw_text = extract_text_from_docx(uploaded_file)
-    
-    # Tiến hành dịch các thuật ngữ viết tắt theo từ điển mới nhất
     clean_text = normalize_text(raw_text, st.session_state.aviation_dict)
     
     st.subheader("Xem trước văn bản xử lý")
     st.text_area("Văn bản AI sẽ đọc thực tế (Đã bung từ viết tắt):", value=clean_text, height=200)
         
-    # Nút bấm kích hoạt chuyển đổi
     if st.button("🚀 Xuất file MP3", type="primary"):
-        # Chèn timestamp tạo tên file duy nhất, tránh lỗi bộ nhớ đệm (cache) của trình duyệt
         timestamp = time.strftime("%H%M%S")
         output_filename = f"converted_{uploaded_file.name.split('.')[0]}_{timestamp}.mp3"
         
-        with st.spinner("🤖 Bot đang xử lý giọng đọc... Vui lòng đợi."):
-            generate_audio_sync(clean_text, output_filename)
+        with st.spinner("🤖 Bot AI Neural đang xử lý giọng đọc... Vui lòng đợi."):
+            # ÉP CHẠY LUỒNG ASYNC TRÊN NỀN TẢNG STREAMLIT AN TOÀN
+            asyncio.run(generate_audio_async(clean_text, output_filename, selected_voice, speed))
             
         if os.path.exists(output_filename):
             st.balloons()
-            st.success("🎉 Đã tạo xong file âm thanh!")
+            st.success("🎉 Đã tạo xong file âm thanh chất lượng cao!")
             
             with open(output_filename, "rb") as audio_file:
                 audio_bytes = audio_file.read()
@@ -148,5 +152,4 @@ if uploaded_file is not None:
                     mime="audio/mp3"
                 )
             
-            # Khử file tạm sau khi hiển thị để giải phóng bộ nhớ hệ thống
             os.remove(output_filename)
