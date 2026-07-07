@@ -1,5 +1,3 @@
 streamlit
 python-docx
 edge-tts>=6.1.12
-asyncio
-nest_asyncio
