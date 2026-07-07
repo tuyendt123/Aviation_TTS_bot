@@ -62,18 +62,18 @@ def extract_text_from_docx(file_bytes):
     paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
     return "\n".join(paragraphs)
 
-# 5. CẤU TRÚC HÀM ASYNC CHUẨN ĐỂ GỌI ENGINE EDGE-TTS (Đã sửa lỗi NoAudioReceived)
+# 5. CẤU TRÚC HÀM ASYNC CHUẨN ĐỂ GỌI ENGINE EDGE-TTS (Đã sửa đổi định dạng rate chuẩn phần trăm)
 async def generate_audio_async(text, output_path, voice, speed_rate):
     if not text.strip():
         raise ValueError("Văn bản bị trống!")
     
-    # Định dạng hệ số tốc độ theo chuẩn Microsoft (Ví dụ: 1.15x, 1.20x)
-    speed_string = f"{speed_rate:.2f}x"
+    # Quy đổi số thập phân (Ví dụ 1.15) thành phần trăm (Ví dụ: +15%) theo đúng Regex r"^[+-]\d+%$"
+    percentage = int(round((speed_rate - 1.0) * 100))
+    speed_string = f"+{percentage}%" if percentage >= 0 else f"{percentage}%"
     
     # Khởi tạo luồng giao tiếp bảo mật với máy chủ Microsoft Edge AI
     communicate = edge_tts.Communicate(text, voice, rate=speed_string)
     await communicate.save(output_path)
-
 
 # --- KHỞI TẠO BỘ NHỚ TẠM CHO TỪ ĐIỂN ---
 if 'aviation_dict' not in st.session_state:
