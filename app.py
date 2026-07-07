@@ -14,9 +14,13 @@ def extract_text_from_docx(file_bytes):
     paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
     return "\n".join(paragraphs)
 
-# 2. Hàm Async tối giản để gọi Edge-TTS tải file âm thanh về
+# 2. Hàm Async tối giản để gọi Edge-TTS tải file âm thanh về (Đã làm sạch chuỗi kỹ thuật)
 async def save_audio(text, output_path, voice, speed_string):
-    communicate = edge_tts.Communicate(text, voice, rate=speed_string)
+    # Loại bỏ hoàn toàn các ký tự xuống dòng thừa gây ngắt mạch kết nối của Microsoft
+    clean_text = text.replace('\n', ' ').replace('\r', ' ')
+    clean_text = " ".join(clean_text.split()) # Nén khoảng trắng thừa
+    
+    communicate = edge_tts.Communicate(clean_text, voice, rate=speed_string)
     await communicate.save(output_path)
 
 
