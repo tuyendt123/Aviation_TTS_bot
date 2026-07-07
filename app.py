@@ -3,9 +3,13 @@ import json
 import re
 import os
 import time
-import asyncio  # Thư viện bắt buộc để chạy luồng mã hóa của edge-tts
+import asyncio
 from docx import Document
 import edge_tts
+import nest_asyncio
+
+# 🔥 VÁ LỖI LUỒNG HỆ THỐNG: Cho phép asyncio chạy an toàn trên nền tảng Web Streamlit
+nest_asyncio.apply()
 
 # Cấu hình giao diện Web
 st.set_page_config(page_title="Aviation TTS Bot", page_icon="✈️", layout="centered")
@@ -13,7 +17,7 @@ st.set_page_config(page_title="Aviation TTS Bot", page_icon="✈️", layout="ce
 # Đường dẫn file lưu từ điển trên server
 DICT_FILE = "aviation_dict.json"
 
-# Bảng tra cứu phiên âm CHỈ DÀNH CHO CHỮ CÁI tiếng Anh (Số giữ nguyên để đọc tiếng Việt)
+# Bảng tra cứu phiên âm CHỈ DÀNH CHO CHỮ CÁI tiếng Anh
 ENGLISH_LETTERS_PHONETICS = {
     'A': ' ây ', 'B': ' bi ', 'C': ' xi ', 'D': ' di ', 'E': ' i ', 
     'F': ' ép ', 'G': ' ji ', 'H': ' ét chơ ', 'I': ' ai ', 'J': ' jê ', 
@@ -37,18 +41,25 @@ def save_dictionary(dictionary, file_path=DICT_FILE):
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(dictionary, f, ensure_ascii=False, indent=2)
 
-# 3. Hàm chuẩn hóa văn bản (Chỉ bung từ điển viết tắt chuyên ngành)
+# 3. Hàm chuẩn hóa văn bản (Chữ đọc tiếng Anh, Số đọc tiếng Việt - Đã khử khoảng trắng thừa)
 def normalize_text(text, dictionary):
     if not text:
         return ""
         
-    # Dịch các thuật ngữ viết tắt theo file từ điển JSON trước (Ưu tiên số 1)
+    # Bước a: Dịch các thuật ngữ viết tắt theo file từ điển JSON trước (Ưu tiên số 1)
     sorted_keywords = sorted(dictionary.keys(), key=len, reverse=True)
     for kw in sorted_keywords:
         pattern = re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
         text = pattern.sub(dictionary[kw], text)
     
-    # Gom khoảng trắng thừa để chuỗi văn bản mạch lạc
+    # Bước b: Đổi các chữ cái viết hoa tự động sang tiếng Anh (Giữ nguyên số đọc tiếng Việt)
+    def replace_char(match):
+        char = match.group(0)
+        return ENGLISH_LETTERS_PHONETICS.get(char, char)
+
+    text = re.sub(r'[A-Z]', replace_char, text)
+    
+    # Khử khoảng trắng thừa để văn bản chuẩn cú pháp đầu vào cho Edge-TTS
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
@@ -58,22 +69,22 @@ def extract_text_from_docx(file_bytes):
     paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
     return "\n".join(paragraphs)
 
-# 5. CẤU TRÚC HÀM ASYNC GỌI ENGINE EDGE-TTS ÔN ĐỊNH 100%
+# 5. CẤU TRÚC HÀM ASYNC GỌI ENGINE EDGE-TTS ÔN ĐỊNH
 async def generate_audio_async(text, output_path, voice, speed_rate):
     if not text.strip():
         raise ValueError("Văn bản bị trống!")
     
-    # Cấu hình tốc độ đọc chuẩn phần trăm
+    # Định dạng tốc độ chuẩn phần trăm (Regex: r"^[+-]\d+%$")
     percentage = int(round((speed_rate - 1.0) * 100))
     speed_string = f"+{percentage}%" if percentage >= 0 else f"{percentage}%"
     
-    # Để tránh Microsoft từ chối các chuỗi ký tự kỹ thuật hàng không (như GPM 5L), 
-    # chúng ta làm sạch triệt để các ký tự lạ hoặc xuống dòng lỗi trong văn bản gốc
+    # Làm sạch các ký tự xuống dòng bị lỗi trong văn bản gốc
     clean_content = text.replace('\n', ' ').replace('\r', ' ')
     
-    # Khởi tạo tiến trình kết nối an toàn
+    # Khởi tạo tiến trình giao tiếp an toàn
     communicate = edge_tts.Communicate(clean_content, voice, rate=speed_string)
     await communicate.save(output_path)
+
 
 # --- KHỞI TẠO BỘ NHỚ TẠM CHO TỪ ĐIỂN ---
 if 'aviation_dict' not in st.session_state:
@@ -82,7 +93,6 @@ if 'aviation_dict' not in st.session_state:
 # --- GIAO DIỆN THANH BÊN (SIDEBAR) ---
 st.sidebar.header("Cấu hình Giọng đọc AI")
 
-# Lựa chọn giọng đọc AI Neural cao cấp chuẩn vùng miền của Microsoft
 voice_option = st.sidebar.selectbox(
     "Chọn giọng đọc:",
     options=["vi-VN-HoaiAnNeural (Nữ miền Nam)", "vi-VN-NamMinhNeural (Nam miền Bắc)"],
@@ -90,12 +100,11 @@ voice_option = st.sidebar.selectbox(
 )
 selected_voice = voice_option.split(" ")[0]
 
-# Thanh trượt cấu hình tốc độ (Mặc định để sẵn mốc 1.15 theo yêu cầu của bạn)
+# Thanh trượt tốc độ mặc định 1.15
 speed = st.sidebar.slider("Tốc độ đọc (Speed Rate):", min_value=1.0, max_value=1.5, value=1.15, step=0.05)
 
 st.sidebar.markdown("---")
 
-# Khu vực bổ sung từ viết tắt nhanh trực tiếp trên giao diện Web
 st.sidebar.subheader("➕ Thêm từ viết tắt nhanh")
 new_key = st.sidebar.text_input("Từ viết tắt (Ví dụ: MEL):").strip()
 new_value = st.sidebar.text_input("Cách đọc hoàn chỉnh (Ví dụ: Minimum Equipment List):").strip()
@@ -134,8 +143,9 @@ if uploaded_file is not None:
         output_filename = f"converted_{uploaded_file.name.split('.')[0]}_{timestamp}.mp3"
         
         with st.spinner("🤖 Bot AI Neural đang xử lý giọng đọc... Vui lòng đợi."):
-            # ÉP CHẠY LUỒNG ASYNC TRÊN NỀN TẢNG STREAMLIT AN TOÀN
-            asyncio.run(generate_audio_async(clean_text, output_filename, selected_voice, speed))
+            # Gọi luồng xử lý an toàn thông qua Event Loop đã được vá lỗi bởi nest_asyncio
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(generate_audio_async(clean_text, output_filename, selected_voice, speed))
             
         if os.path.exists(output_filename):
             st.balloons()
