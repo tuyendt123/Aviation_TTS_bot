@@ -37,23 +37,28 @@ def save_dictionary(dictionary, file_path=DICT_FILE):
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(dictionary, f, ensure_ascii=False, indent=2)
 
-# 3. Hàm chuẩn hóa văn bản (Chữ đọc tiếng Anh, Số đọc tiếng Việt)
+# 3. Hàm chuẩn hóa văn bản (Chữ đọc tiếng Anh, Số đọc tiếng Việt - ĐÃ KHỬ KHOẢNG TRẮNG THỪA)
 def normalize_text(text, dictionary):
     if not text:
         return ""
         
-    # Quy trình 1: Dịch các thuật ngữ viết tắt theo file từ điển JSON trước (Ưu tiên số 1)
+    # Bước a: Dịch các thuật ngữ viết tắt theo file từ điển JSON trước (Ưu tiên số 1)
     sorted_keywords = sorted(dictionary.keys(), key=len, reverse=True)
     for kw in sorted_keywords:
         pattern = re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
         text = pattern.sub(dictionary[kw], text)
     
-    # Quy trình 2: Quét toàn bộ và ép các chữ cái đơn lẻ (như GPM, L, R) đọc chuẩn tiếng Anh
+    # Bước b: Đổi chữ cái viết hoa sang phiên âm tiếng Anh
     def replace_char(match):
         char = match.group(0)
         return ENGLISH_LETTERS_PHONETICS.get(char, char)
 
     text = re.sub(r'[A-Z]', replace_char, text)
+    
+    # 🔥 BƯỚC QUAN TRỌNG: Khử hoàn toàn khoảng trắng thừa (Đập tan lỗi NoAudioReceived)
+    # Gom nhiều khoảng trắng liên tiếp lại thành đúng 1 khoảng trắng duy nhất
+    text = re.sub(r'\s+', ' ', text).strip()
+            
     return text
 
 # 4. Hàm trích xuất toàn bộ văn bản từ file Word (.docx)
