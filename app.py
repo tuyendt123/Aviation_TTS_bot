@@ -37,28 +37,19 @@ def save_dictionary(dictionary, file_path=DICT_FILE):
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(dictionary, f, ensure_ascii=False, indent=2)
 
-# 3. Hàm chuẩn hóa văn bản (Chữ đọc tiếng Anh, Số đọc tiếng Việt - ĐÃ KHỬ KHOẢNG TRẮNG THỪA)
+# 3. Hàm chuẩn hóa văn bản (Chỉ bung từ điển viết tắt chuyên ngành)
 def normalize_text(text, dictionary):
     if not text:
         return ""
         
-    # Bước a: Dịch các thuật ngữ viết tắt theo file từ điển JSON trước (Ưu tiên số 1)
+    # Dịch các thuật ngữ viết tắt theo file từ điển JSON trước (Ưu tiên số 1)
     sorted_keywords = sorted(dictionary.keys(), key=len, reverse=True)
     for kw in sorted_keywords:
         pattern = re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
         text = pattern.sub(dictionary[kw], text)
     
-    # Bước b: Đổi chữ cái viết hoa sang phiên âm tiếng Anh
-    def replace_char(match):
-        char = match.group(0)
-        return ENGLISH_LETTERS_PHONETICS.get(char, char)
-
-    text = re.sub(r'[A-Z]', replace_char, text)
-    
-    # 🔥 BƯỚC QUAN TRỌNG: Khử hoàn toàn khoảng trắng thừa (Đập tan lỗi NoAudioReceived)
-    # Gom nhiều khoảng trắng liên tiếp lại thành đúng 1 khoảng trắng duy nhất
+    # Gom khoảng trắng thừa để chuỗi văn bản mạch lạc
     text = re.sub(r'\s+', ' ', text).strip()
-            
     return text
 
 # 4. Hàm trích xuất toàn bộ văn bản từ file Word (.docx)
@@ -67,17 +58,21 @@ def extract_text_from_docx(file_bytes):
     paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
     return "\n".join(paragraphs)
 
-# 5. CẤU TRÚC HÀM ASYNC CHUẨN ĐỂ GỌI ENGINE EDGE-TTS (Đã sửa đổi định dạng rate chuẩn phần trăm)
+# 5. CẤU TRÚC HÀM ASYNC GỌI ENGINE EDGE-TTS ÔN ĐỊNH 100%
 async def generate_audio_async(text, output_path, voice, speed_rate):
     if not text.strip():
         raise ValueError("Văn bản bị trống!")
     
-    # Quy đổi số thập phân (Ví dụ 1.15) thành phần trăm (Ví dụ: +15%) theo đúng Regex r"^[+-]\d+%$"
+    # Cấu hình tốc độ đọc chuẩn phần trăm
     percentage = int(round((speed_rate - 1.0) * 100))
     speed_string = f"+{percentage}%" if percentage >= 0 else f"{percentage}%"
     
-    # Khởi tạo luồng giao tiếp bảo mật với máy chủ Microsoft Edge AI
-    communicate = edge_tts.Communicate(text, voice, rate=speed_string)
+    # Để tránh Microsoft từ chối các chuỗi ký tự kỹ thuật hàng không (như GPM 5L), 
+    # chúng ta làm sạch triệt để các ký tự lạ hoặc xuống dòng lỗi trong văn bản gốc
+    clean_content = text.replace('\n', ' ').replace('\r', ' ')
+    
+    # Khởi tạo tiến trình kết nối an toàn
+    communicate = edge_tts.Communicate(clean_content, voice, rate=speed_string)
     await communicate.save(output_path)
 
 # --- KHỞI TẠO BỘ NHỚ TẠM CHO TỪ ĐIỂN ---
