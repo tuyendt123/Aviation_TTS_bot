@@ -29,63 +29,21 @@ def normalize_text(text, dictionary):
         text = pattern.sub(dictionary[kw], text)
     return text
 
-# 3. Hàm lọc thông minh: Ưu tiên từ điển tuyệt đối -> Tách chữ/số tách biệt -> Ép chữ cái đọc tiếng Anh
-def normalize_text(text, dictionary):
-    if not text:
-        return ""
-    
-    # Bước a: Bung từ viết tắt từ JSON trước (Ưu tiên số 1 - giữ nguyên khối để dịch chuẩn)
-    sorted_keywords = sorted(dictionary.keys(), key=len, reverse=True)
-    for kw in sorted_keywords:
-        # Thay thế ranh giới \b bằng regex linh hoạt để ăn khớp cả ký tự đặc biệt (/, -)
-        pattern = re.compile(r'(?<![A-Za-z0-9])' + re.escape(kw) + r'(?![A-Za-z0-9])', re.IGNORECASE)
-        text = pattern.sub(dictionary[kw], text)
-        
-    # Bước b: Thay thế các cụm từ tiếng Anh nguyên bản thông dụng (Ưu tiên số 2)
-    for word, pronunciation in COMMON_ENGLISH_WORDS.items():
-        pattern = re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
-        text = pattern.sub(pronunciation, text)
-
-    # 🔥 Bước c: TỰ ĐỘNG HÓA TÁCH CHỮ VÀ SỐ (Ví dụ: VN1039 -> VN 1 0 3 9, A320 -> A 3 2 0)
-    # Thêm khoảng trắng giữa Chữ và Số
-    text = re.sub(r'([A-Za-z])(?=\d)', r'\1 ', text)
-    text = re.sub(r'(\d)(?=[A-Za-z])', r'\1 ', text)
-    # Rã rời các chữ số dính liền nhau thành từng số đơn lẻ
-    text = re.sub(r'(?<=\d)(?=\d)', ' ', text)
-        
-    # Bước d: Ép đọc tiếng Anh cho từng ký tự viết hoa không phải tiếng Việt
-    words = text.split()
-    for i, word in enumerate(words):
-        # Chỉ rã chữ đọc tiếng Anh cho các từ thuần ký tự Latinh/số không chứa dấu tiếng Việt
-        if re.match(r'^[A-Za-z0-9\-_/]+$', word):
-            phonetic_word = ""
-            for char in word:
-                upper_char = char.upper()
-                if upper_char in ENGLISH_LETTERS:
-                    phonetic_word += ENGLISH_LETTERS[upper_char]
-                else:
-                    phonetic_word += char
-            words[i] = phonetic_word
-            
-    text = " ".join(words)
-    
-    # Bước e: Thu gọn khoảng trắng thừa
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
-
-# 4. Hàm trích xuất toàn bộ văn bản từ file Word (.docx) - ĐÃ SỬA LỖI TRÔI CON TRỎ FILE
+# 3. Hàm trích xuất toàn bộ văn bản từ file Word (.docx)
 def extract_text_from_docx(file_bytes):
-    try:
-        # Ép con trỏ đọc file quay về vị trí 0 (đầu file) để tránh bị đọc chuỗi rỗng khi rerun
-        file_bytes.seek(0)
-        
-        file_stream = io.BytesIO(file_bytes.read())
-        doc = Document(file_stream)
-    except AttributeError:
-        doc = Document(file_bytes)
-        
+    doc = Document(file_bytes)
     paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
     return "\n".join(paragraphs)
+
+# 4. Hàm gọi AI Engine để chuyển text thành file âm thanh MP3
+def generate_audio_sync(text, output_path):
+    if not text.strip():
+        raise ValueError("Văn bản bị trống!")
+    
+    # Sử dụng Google TTS, ngôn ngữ tiếng Việt ('vi')
+    tts = gTTS(text=text, lang='vi', slow=False)
+    tts.save(output_path)
+
 
 # --- GIAO DIỆN KHÔNG GIAN LÀM VIỆC ---
 st.title("✈️ Aviation Report-to-Voice Converter")
