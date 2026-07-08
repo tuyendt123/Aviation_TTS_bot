@@ -3,12 +3,18 @@ import streamlit as st
 import json
 import re
 import os
-import asyncio
 from docx import Document
-import gtts
 
 # Cấu hình giao diện Web
 st.set_page_config(page_title="Aviation TTS Bot", page_icon="✈️", layout="centered")
+
+# Bảng tra cứu phiên âm chữ cái tiếng Anh sang tiếng Việt để gTTS đọc chuẩn
+ENGLISH_ALPHABET_PHONETICS = {
+    'A': 'Êy', 'B': 'Bi', 'C': 'Si', 'D': 'Di', 'E': 'Y', 'F': 'Ép', 'G': 'Ji',
+    'H': 'Êy t-ch', 'I': 'Ai', 'J': 'Jei', 'K': 'Kei', 'L': 'Ép-lờ', 'M': 'Em', 'N': 'En',
+    'O': 'Ôu', 'P': 'Pi', 'Q': 'Khiu', 'R': 'A', 'S': 'És', 'T': 'Ti',
+    'U': 'Iu', 'V': 'Vi', 'W': 'Dáp-liu', 'X': 'Ít-xì', 'Y': 'Quai', 'Z': 'Zét'
+}
 
 # 1. Hàm đọc file từ điển JSON
 def load_dictionary(file_path="aviation_dict.json"):
@@ -17,16 +23,40 @@ def load_dictionary(file_path="aviation_dict.json"):
             return json.load(f)
     return {}
 
-# 2. Hàm chuẩn hóa văn bản (Thay thế từ viết tắt bằng từ hoàn chỉnh)
+# Hàm chuyển đổi một từ viết tắt thành cách đọc từng chữ cái tiếng Anh
+def spell_abbreviation_in_english(word):
+    spelled_out = []
+    for char in word:
+        upper_char = char.upper()
+        if upper_char in ENGLISH_ALPHABET_PHONETICS:
+            spelled_out.append(ENGLISH_ALPHABET_PHONETICS[upper_char])
+        else:
+            spelled_out.append(char) # Giữ nguyên số hoặc ký tự đặc biệt
+    return " ".join(spelled_out)
+
+# 2. Hàm chuẩn hóa văn bản
 def normalize_text(text, dictionary):
     if not text:
         return ""
-    # Sắp xếp từ khóa dài trước, ngắn sau để tránh lỗi đè từ
+    
+    # Bước 2.1: Thay thế các cụm từ theo từ điển aviation_dict.json trước
     sorted_keywords = sorted(dictionary.keys(), key=len, reverse=True)
     for kw in sorted_keywords:
-        # Dùng Regex với biên từ \b để thay thế chính xác cụm từ độc lập
         pattern = re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
         text = pattern.sub(dictionary[kw], text)
+    
+    # Bước 2.2: Tự động phát hiện các từ viết tắt hoa còn lại (ví dụ: GPM, A320, VNAV) 
+    # Regex tìm các từ có từ 2 ký tự in hoa trở lên, có thể đi kèm số
+    abbrev_pattern = re.compile(r'\b[A-Z]{2,}\d*\b|\b[A-Z]+\b')
+    
+    def replace_abbrev(match):
+        word = match.group(0)
+        # Nếu từ này đã được dịch ở bước 1 (nằm trong giá trị từ điển) thì bỏ qua
+        if word.lower() in [val.lower() for val in dictionary.values()]:
+            return word
+        return spell_abbreviation_in_english(word)
+
+    text = abbrev_pattern.sub(replace_abbrev, text)
     return text
 
 # 3. Hàm trích xuất toàn bộ văn bản từ file Word (.docx)
@@ -39,36 +69,10 @@ def extract_text_from_docx(file_bytes):
 def generate_audio_sync(text, output_path):
     if not text.strip():
         raise ValueError("Văn bản bị trống!")
-
-# --- KHỔI TẠO BỘ NHỚ TẠM CHO TỪ ĐIỂN ---
-if 'aviation_dict' not in st.session_state:
-    st.session_state.aviation_dict = load_dictionary()
-
-
-# --- GIAO DIỆN THANH BÊN (SIDEBAR) ---
-st.sidebar.header("Cấu hình Giọng đọc AI")
-st.sidebar.info("Hệ thống sử dụng Google TTS ổn định vĩnh viễn.")
-
-st.sidebar.markdown("---")
-
-# KHU VỰC BỔ SUNG TỪ VIẾT TẮT TRỰC TIẾP TRÊN WEB
-st.sidebar.subheader("➕ Thêm từ viết tắt nhanh")
-new_key = st.sidebar.text_input("Từ viết tắt (Ví dụ: AOG):").strip()
-new_value = st.sidebar.text_input("Cách đọc mong muốn (Ví dụ: ây ô gi tàu bay dừng):").strip()
-
-if st.sidebar.button("Thêm vào từ điển", use_container_width=True):
-    if new_key and new_value:
-        st.session_state.aviation_dict[new_key] = new_value
-        save_dictionary(st.session_state.aviation_dict)
-        st.sidebar.success(f"🎉 Đã thêm thành công: {new_key}")
-        time.sleep(0.5)
-        st.rerun()
-    else:
-        st.sidebar.error("Vui lòng nhập đầy đủ cả 2 ô!")
-
-with st.sidebar.expander("📝 Từ điển viết tắt đang áp dụng", expanded=True):
-    st.json(st.session_state.aviation_dict)
-
+    
+    # Sử dụng Google TTS, ngôn ngữ tiếng Việt ('vi')
+    tts = gTTS(text=text, lang='vi', slow=False)
+    tts.save(output_path)
 
 # --- GIAO DIỆN KHÔNG GIAN LÀM VIỆC ---
 st.title("✈️ Aviation Report-to-Voice Converter")
@@ -81,7 +85,6 @@ voice_option = st.sidebar.selectbox(
     options=["vi-VN-HoaiAnNeural (Nữ miền Nam)", "vi-VN-NamMinhNeural (Nam miền Bắc)"],
     index=0
 )
-selected_voice = voice_option.split(" ")[0]
 
 # Khởi tạo từ điển
 aviation_dict = load_dictionary()
@@ -97,7 +100,7 @@ if uploaded_file is not None:
     # Đọc text gốc từ file Word
     raw_text = extract_text_from_docx(uploaded_file)
     
-    # Tiến hành dịch các thuật ngữ viết tắt theo từ điển
+    # Tiến hành dịch các thuật ngữ viết tắt theo từ điển và phiên âm chữ cái
     clean_text = normalize_text(raw_text, aviation_dict)
     
     # Hiển thị khu vực xem trước kết quả dịch chữ trước khi đọc
@@ -109,19 +112,16 @@ if uploaded_file is not None:
         output_filename = f"converted_{uploaded_file.name.split('.')[0]}.mp3"
         
         with st.spinner("🤖 Bot đang xử lý giọng đọc... Vui lòng đợi."):
-            # Chạy tác vụ Async tạo file âm thanh
             generate_audio_sync(clean_text, output_filename)
             
         if os.path.exists(output_filename):
             st.balloons()
             st.success("🎉 Đã tạo xong file âm thanh!")
             
-            # Trình phát nhạc nghe thử trực tiếp trên Web
             with open(output_filename, "rb") as audio_file:
                 audio_bytes = audio_file.read()
                 st.audio(audio_bytes, format="audio/mp3")
                 
-                # Nút tải file MP3 về máy tính của bạn
                 st.download_button(
                     label="📥 Tải file MP3 về máy",
                     data=audio_bytes,
@@ -129,5 +129,4 @@ if uploaded_file is not None:
                     mime="audio/mp3"
                 )
             
-            # Dọn dẹp file tạm trên máy sau khi xử lý xong
             os.remove(output_filename)
