@@ -42,7 +42,7 @@ def save_dictionary(dictionary, file_path=DICT_FILE):
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(dictionary, f, ensure_ascii=False, indent=2)
 
-# 3. Hàm lọc thông minh: Ưu tiên từ điển -> Từ thông dụng -> Ép ký tự hoa đọc tiếng Anh
+# 3. Hàm lọc thông minh (Đã sửa lỗi quét nhầm chữ tiếng Việt viết hoa)
 def normalize_text(text, dictionary):
     if not text:
         return ""
@@ -58,13 +58,23 @@ def normalize_text(text, dictionary):
         pattern = re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
         text = pattern.sub(pronunciation, text)
         
-    # Bước c: Quét tất cả chữ cái viết hoa (A-Z) để ép đọc theo tiếng Anh (Ví dụ: GPM, L, R)
-    # Giữ nguyên số để gTTS đọc bằng tiếng Việt
-    def replace_upper_char(match):
-        char = match.group(0)
-        return ENGLISH_LETTERS.get(char, char)
-        
-    text = re.sub(r'[A-Z]', replace_upper_char, text)
+    # Bước c: ÉP ĐỌC TIẾNG ANH CHO TỪNG KÝ TỰ VIẾT HOA KHÔNG PHẢI TIẾNG VIỆT
+    # Tách văn bản thành từng từ để xử lý chính xác, tránh phá vỡ cấu trúc từ tiếng Việt
+    words = text.split()
+    for i, word in enumerate(words):
+        # Chỉ xử lý nếu từ ĐẦU TIÊN là chữ cái tiếng Anh thuần túy (A-Z) hoặc số (Ví dụ: GPM, 5L, MEL)
+        # Loại trừ hoàn toàn các từ chứa ký tự tiếng Việt có dấu
+        if re.match(r'^[A-Za-z0-9\-_]+$', word):
+            phonetic_word = ""
+            for char in word:
+                upper_char = char.upper()
+                if upper_char in ENGLISH_LETTERS:
+                    phonetic_word += ENGLISH_LETTERS[upper_char]
+                else:
+                    phonetic_word += char
+            words[i] = phonetic_word
+            
+    text = " ".join(words)
     
     # Bước d: Thu gọn khoảng trắng thừa để chuỗi văn bản mạch lạc
     text = re.sub(r'\s+', ' ', text).strip()
@@ -84,34 +94,32 @@ def generate_audio_sync(text, output_path):
     tts.save(output_path)
 
 
-# --- KHỞI TẠO BỘ NHỚ TẠM CHO TỪ ĐIỂN ---
+# --- KHỔI TẠO BỘ NHỚ TẠM CHO TỪ ĐIỂN ---
 if 'aviation_dict' not in st.session_state:
     st.session_state.aviation_dict = load_dictionary()
 
 
 # --- GIAO DIỆN THANH BÊN (SIDEBAR) ---
 st.sidebar.header("Cấu hình Giọng đọc AI")
-st.sidebar.info("Hệ thống sử dụng Google TTS ổn định. Lựa chọn giọng đọc dưới đây chỉ áp dụng cho Edge-TTS (đã tạm ẩn).")
+st.sidebar.info("Hệ thống sử dụng Google TTS ổn định vĩnh viễn.")
 
 st.sidebar.markdown("---")
 
-# ✨ KHU VỰC BỔ SUNG TỪ VIẾT TẮT TRỰC TIẾP TRÊN WEB
+# KHU VỰC BỔ SUNG TỪ VIẾT TẮT TRỰC TIẾP TRÊN WEB
 st.sidebar.subheader("➕ Thêm từ viết tắt nhanh")
 new_key = st.sidebar.text_input("Từ viết tắt (Ví dụ: AOG):").strip()
 new_value = st.sidebar.text_input("Cách đọc mong muốn (Ví dụ: ây ô gi tàu bay dừng):").strip()
 
 if st.sidebar.button("Thêm vào từ điển", use_container_width=True):
     if new_key and new_value:
-        # Cập nhật vào session_state và ghi trực tiếp vào file JSON trên server
         st.session_state.aviation_dict[new_key] = new_value
         save_dictionary(st.session_state.aviation_dict)
         st.sidebar.success(f"🎉 Đã thêm thành công: {new_key}")
         time.sleep(0.5)
-        st.rerun()  # Làm mới trang để cập nhật từ điển lập tức
+        st.rerun()
     else:
         st.sidebar.error("Vui lòng nhập đầy đủ cả 2 ô!")
 
-# Hiển thị bảng từ điển hiện tại
 with st.sidebar.expander("📝 Từ điển viết tắt đang áp dụng", expanded=True):
     st.json(st.session_state.aviation_dict)
 
@@ -120,25 +128,18 @@ with st.sidebar.expander("📝 Từ điển viết tắt đang áp dụng", expa
 st.title("✈️ Aviation Report-to-Voice Converter")
 st.write("Hệ thống tự động chuyển đổi báo cáo Word chuyên ngành thành file âm thanh MP3.")
 
-# Khu vực Upload file Word từ máy tính
 uploaded_file = st.file_uploader("Tải lên file báo cáo Word (.docx)", type=["docx"])
 
 if uploaded_file is not None:
     st.success("Đã tải file lên thành công. Đang xử lý cấu trúc...")
     
-    # Đọc text gốc từ file Word
     raw_text = extract_text_from_docx(uploaded_file)
-    
-    # Tiến hành dịch các thuật ngữ theo từ điển mới nhất trong session_state
     clean_text = normalize_text(raw_text, st.session_state.aviation_dict)
     
-    # Hiển thị khu vực xem trước kết quả dịch chữ trước khi đọc
     st.subheader("Xem trước văn bản xử lý")
     st.text_area("Văn bản AI sẽ đọc thực tế (Đã bung từ viết tắt):", value=clean_text, height=200)
         
-    # Nút bấm kích hoạt chuyển đổi
     if st.button("🚀 Xuất file MP3", type="primary"):
-        # Thêm timestamp vào tên file tránh dính cache trình duyệt
         timestamp = time.strftime("%H%M%S")
         output_filename = f"converted_{uploaded_file.name.split('.')[0]}_{timestamp}.mp3"
         
@@ -161,7 +162,6 @@ if uploaded_file is not None:
                             mime="audio/mp3"
                         )
                     
-                    # Dọn dẹp file tạm trên máy sau khi xử lý xong
                     os.remove(output_filename)
             except Exception as e:
                 st.error(f"Có lỗi xảy ra: {e}")
