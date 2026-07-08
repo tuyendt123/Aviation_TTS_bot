@@ -73,14 +73,19 @@ def normalize_text(text, dictionary):
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
-# 4. Hàm gọi AI Engine để chuyển text thành file âm thanh MP3
-def generate_audio_sync(text, output_path):
-    if not text.strip():
-        raise ValueError("Văn bản bị trống!")
-    
-    # Sử dụng Google TTS, ngôn ngữ tiếng Việt ('vi')
-    tts = gTTS(text=text, lang='vi', slow=False)
-    tts.save(output_path)
+# 4. Hàm trích xuất toàn bộ văn bản từ file Word (.docx) - ĐÃ SỬA LỖI TRÔI CON TRỎ FILE
+def extract_text_from_docx(file_bytes):
+    try:
+        # Ép con trỏ đọc file quay về vị trí 0 (đầu file) để tránh bị đọc chuỗi rỗng khi rerun
+        file_bytes.seek(0)
+        
+        file_stream = io.BytesIO(file_bytes.read())
+        doc = Document(file_stream)
+    except AttributeError:
+        doc = Document(file_bytes)
+        
+    paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+    return "\n".join(paragraphs)
 
 # --- GIAO DIỆN KHÔNG GIAN LÀM VIỆC ---
 st.title("✈️ Aviation Report-to-Voice Converter")
