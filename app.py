@@ -16,10 +16,6 @@ def load_dictionary(file_path="aviation_dict.json"):
         with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
     return {}
-# 2. Hàm ghi file từ điển JSON khi người dùng thêm từ trên Web
-def save_dictionary(dictionary, file_path=DICT_FILE):
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(dictionary, f, ensure_ascii=False, indent=2)
 
 # 2. Hàm chuẩn hóa văn bản (Thay thế từ viết tắt bằng từ hoàn chỉnh)
 def normalize_text(text, dictionary):
