@@ -11,11 +11,14 @@ import gtts
 st.set_page_config(page_title="Aviation TTS Bot", page_icon="✈️", layout="centered")
 
 # 1. Hàm đọc file từ điển JSON
-def load_dictionary(file_path="aviation_dict.json"):
-    if os.path.exists(file_path):
-        with open(file_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+def load_dictionary(file_path=DICT_FILE):
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
 
 # 2. Hàm chuẩn hóa văn bản (Thay thế từ viết tắt bằng từ hoàn chỉnh)
 def normalize_text(text, dictionary):
