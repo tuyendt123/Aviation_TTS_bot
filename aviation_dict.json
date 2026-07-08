@@ -1,6 +1,4 @@
 {
-  "MEL": "Minimum Equipment List",
-  "APU": "Auxiliary Power Unit",
   "DDM": "Deferred Defect Monitoring",
   "ATA 32": "ATA ba mươi hai, hệ thống càng đáp",
   "ATA 24": "ATA hai mươi bốn, hệ thống nguồn điện",
@@ -12,5 +10,14 @@
   "LDG": "Landing Gear",
   "L/H": "Left hand",
   "R/H": "Right Hand",
-  "ADD": "ây đi đi"
+  "ADD": "ây đi đi",
+  "F/CTL": "flight control",
+  "RR": "Rolls Royce"'
+  "HSNN": "hồ sơ nhân nhượng",
+  "INOP": "in ốp",
+  "T/S": "troubleshoot",
+  "FC": "chu kì bay",
+  "FH": "giờ bay",
+  "R": "right",
+  "L": "left"
 }
