@@ -6,7 +6,6 @@ import os
 import asyncio
 from docx import Document
 import gtts
-import io
 
 # Cấu hình giao diện Web
 st.set_page_config(page_title="Aviation TTS Bot", page_icon="✈️", layout="centered")
@@ -30,58 +29,17 @@ def normalize_text(text, dictionary):
         text = pattern.sub(dictionary[kw], text)
     return text
 
-# 3. Hàm lọc thông minh: Ưu tiên từ điển -> Tách rời từng chữ số -> Ép ký tự hoa đọc tiếng Anh
-def normalize_text(text, dictionary):
-    if not text:
-        return ""
-    
-    # Bước a: Dịch các thuật ngữ viết tắt theo file từ điển JSON trước (Ưu tiên số 1)
-    sorted_keywords = sorted(dictionary.keys(), key=len, reverse=True)
-    for kw in sorted_keywords:
-        pattern = re.compile(r'\b' + re.escape(kw) + r'\b', re.IGNORECASE)
-        text = pattern.sub(dictionary[kw], text)
-        
-    # Bước b: Thay thế các cụm từ tiếng Anh nguyên bản thông dụng (Ưu tiên số 2)
-    for word, pronunciation in COMMON_ENGLISH_WORDS.items():
-        pattern = re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
-        text = pattern.sub(pronunciation, text)
-
-    # 🔥 Bước c: TỰ ĐỘNG HÓA TÁCH RỜI TỪNG CHỮ SỐ (Ví dụ: 1039 -> 1 0 3 9)
-    # Tìm tất cả các cụm chữ số dính nhau và chèn khoảng trắng vào giữa chúng
-    text = re.sub(r'(?<=\d)(?=\d)', ' ', text)
-        
-    # Bước d: Ép đọc tiếng Anh cho từng ký tự viết hoa không phải tiếng Việt (Ví dụ: GPM, VN, MEL)
-    words = text.split()
-    for i, word in enumerate(words):
-        # Chỉ xử lý nếu từ cấu thành từ ký tự tiếng Anh thuần túy hoặc số
-        if re.match(r'^[A-Za-z0-9\-_]+$', word):
-            phonetic_word = ""
-            for char in word:
-                upper_char = char.upper()
-                if upper_char in ENGLISH_LETTERS:
-                    phonetic_word += ENGLISH_LETTERS[upper_char]
-                else:
-                    phonetic_word += char
-            words[i] = phonetic_word
-            
-    text = " ".join(words)
-    
-    # Bước e: Thu gọn khoảng trắng thừa để chuỗi văn bản mạch lạc
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text  
-
-# 4. Hàm trích xuất toàn bộ văn bản từ file Word (.docx) - ĐÃ SỬA LỖI ĐỌC FILE BYTES
+# 3. Hàm trích xuất toàn bộ văn bản từ file Word (.docx)
 def extract_text_from_docx(file_bytes):
-    try:
-        # Bọc dữ liệu file trong io.BytesIO để python-docx đọc mượt mà trên RAM
-        file_stream = io.BytesIO(file_bytes.read())
-        doc = Document(file_stream)
-    except AttributeError:
-        # Trường hợp file_bytes đã là một stream sẵn rồi
-        doc = Document(file_bytes)
-        
+    doc = Document(file_bytes)
     paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
     return "\n".join(paragraphs)
+
+# 4. Hàm gọi AI Engine để chuyển text thành file âm thanh MP3
+def generate_audio_sync(text, output_path):
+    if not text.strip():
+        raise ValueError("Văn bản bị trống!")
+
 # --- KHỔI TẠO BỘ NHỚ TẠM CHO TỪ ĐIỂN ---
 if 'aviation_dict' not in st.session_state:
     st.session_state.aviation_dict = load_dictionary()
