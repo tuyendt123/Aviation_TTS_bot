@@ -6,6 +6,7 @@ import os
 import asyncio
 from docx import Document
 import gtts
+import io
 
 # Cấu hình giao diện Web
 st.set_page_config(page_title="Aviation TTS Bot", page_icon="✈️", layout="centered")
@@ -67,16 +68,20 @@ def normalize_text(text, dictionary):
     
     # Bước e: Thu gọn khoảng trắng thừa để chuỗi văn bản mạch lạc
     text = re.sub(r'\s+', ' ', text).strip()
-    return text
+    return text  
 
-# 4. Hàm gọi AI Engine để chuyển text thành file âm thanh MP3
-def generate_audio_sync(text, output_path):
-    if not text.strip():
-        raise ValueError("Văn bản bị trống!")
-    
-    # Sử dụng Google TTS, ngôn ngữ tiếng Việt ('vi')
-    tts = gTTS(text=text, lang='vi', slow=False)
-    tts.save(output_path)
+# 4. Hàm trích xuất toàn bộ văn bản từ file Word (.docx) - ĐÃ SỬA LỖI ĐỌC FILE BYTES
+def extract_text_from_docx(file_bytes):
+    try:
+        # Bọc dữ liệu file trong io.BytesIO để python-docx đọc mượt mà trên RAM
+        file_stream = io.BytesIO(file_bytes.read())
+        doc = Document(file_stream)
+    except AttributeError:
+        # Trường hợp file_bytes đã là một stream sẵn rồi
+        doc = Document(file_bytes)
+        
+    paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+    return "\n".join(paragraphs)
 # --- KHỔI TẠO BỘ NHỚ TẠM CHO TỪ ĐIỂN ---
 if 'aviation_dict' not in st.session_state:
     st.session_state.aviation_dict = load_dictionary()
